@@ -8,7 +8,7 @@
 Food supply chains in Pakistan are often reactive, responding to shortages only after prices spike or reserves fail. Traditional systems lack the real-time integration of weather patterns, global market trends, and regional inventory.
 
 ### ✨ Our Solution
-FoodGuard AI introduces an **autonomous AI Analyst** that "senses" the environment through multiple data channels, reasons about risks using the **Gemini 2.5 Flash** model, and provides structured, actionable reports with 90%+ confidence scores.
+FoodGuard AI introduces an **autonomous AI Analyst** that "senses" the environment through multiple data channels, reasons about risks using the **gemini-3-flash-preview** model, and provides structured, actionable reports with 90%+ confidence scores.
 
 ---
 
@@ -45,7 +45,7 @@ graph TD
 ### 1. AI Agent Core (`src/lib/agent/index.ts`)
 * **Purpose**: The decision-making engine.
 * **Responsibilities**: Orchestrates tool calls, analyzes data correlations, and generates structured JSON reports.
-* **Key Tech**: LangChain.js, LangGraph, Gemini 2.5 Flash.
+* **Key Tech**: LangChain.js, LangGraph, gemini-3-flash-preview.
 
 ### 2. Data Collection Layer (`src/lib/agent/tools.ts`)
 * **Purpose**: Fetches ground-truth data.
@@ -161,7 +161,7 @@ stateDiagram-v2
     state Decision <<choice>>
     [*] --> Start: User Request
     Start --> Checkpoint: Initialize Graph State
-    Checkpoint --> Thinking: Analyze Context<br/>(Gemini 2.5 Flash)
+    Checkpoint --> Thinking: Analyze Context<br/>(gemini-3-flash-preview)
     
     Thinking --> Decision
     Decision --> ToolCall: YES (Data Needed)
@@ -180,7 +180,7 @@ stateDiagram-v2
 
 *   **Framework**: Next.js 15 (App Router, Serverless)
 *   **AI Orchestration**: LangChain.js & LangGraph.js
-*   **Large Language Model**: Google Gemini 2.5 Flash
+*   **Large Language Model**: Google gemini-3-flash-preview
 *   **Styling**: Tailwind CSS (Neobrutalist Theme)
 *   **Data Sources**: OpenWeatherMap, World Bank API, NASA POWER
 *   **Geospatial**: Leaflet.js & React-Leaflet
