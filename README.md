@@ -159,25 +159,19 @@ This diagram shows the internal state machine of the FoodGuard Agent. It follows
 ```mermaid
 stateDiagram-v2
     state Decision <<choice>>
-
-    [*] --> Start: "User Request"
-    Start --> Checkpoint: "Initialize Graph State"
-    Checkpoint --> Thinking: "Analyze Context"
+    [*] --> Start: User Request
+    Start --> Checkpoint: Initialize Graph State
+    Checkpoint --> Thinking: Analyze Context<br/>(Gemini 2.5 Flash)
     
     Thinking --> Decision
-    Decision --> ToolCall: "YES (Data Needed)"
-    Decision --> FormulateReport: "NO (Data Sufficient)"
+    Decision --> ToolCall: YES (Data Needed)
+    Decision --> FormulateReport: NO (Data Sufficient)
     
-    ToolCall --> Observation: "Receive API Payload"
-    Observation --> Thinking: "Update State Buffer"
+    ToolCall --> Observation: Receive API Payload
+    Observation --> Thinking: Update State Buffer
     
-    FormulateReport --> Validate: "Strict Zod Schema Check"
-    Validate --> [*]: "Final JSON Output"
-    
-    note right of Thinking
-        Gemini 2.5 Flash
-        analyzes data delta
-    end
+    FormulateReport --> Validate: Strict Zod Schema Check
+    Validate --> [*]: Final JSON Output
 ```
 
 ---
