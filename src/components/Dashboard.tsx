@@ -41,6 +41,7 @@ interface DataSnapshot {
     productionData?: any;
     cropHealthData?: any;
     historicalData?: any;
+    regionalToolData?: Record<string, Record<string, any>>;
 }
 
 export default function Dashboard() {
@@ -177,6 +178,14 @@ export default function Dashboard() {
                                         productionData: (data.toolData && data.toolData.get_production_forecast) || prev.productionData,
                                         cropHealthData: (data.toolData && data.toolData.get_crop_health) || prev.cropHealthData,
                                         historicalData: (data.toolData && data.toolData.get_historical_shortage_data) || prev.historicalData,
+                                    }));
+                                }
+
+                                // Update with regional data if available
+                                if (data.regionalToolData) {
+                                    setDataSnapshot((prev) => ({
+                                        ...prev,
+                                        regionalToolData: data.regionalToolData
                                     }));
                                 }
 

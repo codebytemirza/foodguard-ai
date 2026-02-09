@@ -60,24 +60,62 @@ export const weatherTool = tool(
       const next24h = forecastData.list.slice(0, 8); // 8 * 3 hours = 24 hours
       const next7days = forecastData.list; // All available data
 
-      const rainfall24h = next24h.reduce((sum: number, item: any) =>
-        sum + (item.rain?.["3h"] || 0), 0);
+      // Calculate rainfall with validation (treat missing/invalid as 0)
+      const rainfall24h = next24h.reduce((sum: number, item: any) => {
+        const rain = item.rain?.["3h"] || 0;
+        return sum + (rain >= 0 && rain <= 500 ? rain : 0);
+      }, 0);
 
-      const totalRainfall7d = next7days.reduce((sum: number, item: any) =>
-        sum + (item.rain?.["3h"] || 0), 0);
+      const totalRainfall7d = next7days.reduce((sum: number, item: any) => {
+        const rain = item.rain?.["3h"] || 0;
+        return sum + (rain >= 0 && rain <= 500 ? rain : 0);
+      }, 0);
 
-      const avgTemp7d = next7days.reduce((sum: number, item: any) =>
-        sum + item.main.temp, 0) / next7days.length;
+      // Calculate temperatures with validation
+      const validTemp7d = next7days
+        .map((item: any) => item.main.temp)
+        .filter((temp: number) => temp > -50 && temp < 60);
+      const avgTemp7d = validTemp7d.length > 0 ? validTemp7d.reduce((a: number, b: number) => a + b, 0) / validTemp7d.length : 25;
 
-      const avgHumidity7d = next7days.reduce((sum: number, item: any) =>
-        sum + item.main.humidity, 0) / next7days.length;
+      // Calculate humidity with validation
+      const validHumidity7d = next7days
+        .map((item: any) => item.main.humidity)
+        .filter((h: number) => h >= 0 && h <= 100);
+      const avgHumidity7d = validHumidity7d.length > 0 ? validHumidity7d.reduce((a: number, b: number) => a + b, 0) / validHumidity7d.length : 60;
 
-      // Determine agricultural impact
+      // Determine agricultural impact based on crop stress thresholds
+      // For Pakistan: Critical heat = >38°C, High stress = 35-38°C, Optimal = 20-32°C, Cold stress = <10°C
       let agriculturalRisk = "Low";
-      if (rainfall24h > 50 || currentData.main.temp > 40) {
+      let riskFactors = [];
+      
+      // Temperature risk assessment
+      if (currentData.main.temp > 38 || currentData.main.temp < 5) {
         agriculturalRisk = "High";
-      } else if (rainfall24h > 25 || currentData.main.temp > 35 || currentData.main.humidity < 30) {
-        agriculturalRisk = "Medium";
+        riskFactors.push(`Critical temperature: ${currentData.main.temp}°C`);
+      } else if (currentData.main.temp > 35 || currentData.main.temp < 10) {
+        if (agriculturalRisk !== "High") agriculturalRisk = "Medium";
+        riskFactors.push(`Temperature stress: ${currentData.main.temp}°C`);
+      }
+      
+      // Rainfall risk assessment (excessive or insufficient)
+      if (rainfall24h > 100) {
+        agriculturalRisk = "High";
+        riskFactors.push("Excessive rainfall: flooding risk");
+      } else if (rainfall24h > 50) {
+        if (agriculturalRisk === "Low") agriculturalRisk = "Medium";
+        riskFactors.push("Heavy rainfall: disease risk");
+      } else if (rainfall24h < 2 && currentData.main.humidity < 30) {
+        if (agriculturalRisk !== "High") agriculturalRisk = "Medium";
+        riskFactors.push("Drought conditions: irrigation critical");
+      }
+      
+      // Humidity risk assessment
+      if (currentData.main.humidity > 85) {
+        if (agriculturalRisk === "Low") agriculturalRisk = "Medium";
+        riskFactors.push("High humidity: disease/pest risk");
+      } else if (currentData.main.humidity < 20) {
+        if (agriculturalRisk === "Low") agriculturalRisk = "Medium";
+        riskFactors.push("Very low humidity: water stress");
       }
 
       return JSON.stringify({
@@ -105,9 +143,10 @@ export const weatherTool = tool(
         },
         agriculturalImpact: {
           riskLevel: agriculturalRisk,
-          cropStress: currentData.main.temp > 35 ? "Heat stress likely" : "Normal conditions",
+          riskFactors: riskFactors.length > 0 ? riskFactors : ["Weather conditions favorable for crops"],
+          cropStress: currentData.main.temp > 38 ? "Critical heat stress" : currentData.main.temp > 35 ? "Moderate heat stress" : currentData.main.temp < 10 ? "Cold stress risk" : "Normal conditions",
           irrigationNeeded: rainfall24h < 5 && currentData.main.humidity < 40,
-          pestRisk: currentData.main.humidity > 70 && currentData.main.temp > 25 ? "High" : "Low",
+          pestRisk: currentData.main.humidity > 75 && currentData.main.temp > 25 && currentData.main.temp < 35 ? "High" : currentData.main.humidity > 85 ? "Critical" : "Low",
         },
         dataQuality: "High",
         source: "OpenWeatherMap API",
@@ -300,37 +339,72 @@ export const cropHealthTool = tool(
       const windSpeed = Object.values(data.properties.parameter.WS2M) as number[];
       const solarRadiation = Object.values(data.properties.parameter.ALLSKY_SFC_SW_DWN) as number[];
 
-      const avgTemp = temps.reduce((a, b) => a + b, 0) / temps.length;
-      const maxTemp = Math.max(...maxTemps);
-      const minTemp = Math.min(...minTemps);
-      const totalRainfall = rainfall.reduce((a, b) => a + b, 0);
-      const avgHumidity = humidity.reduce((a, b) => a + b, 0) / humidity.length;
-      const avgWindSpeed = windSpeed.reduce((a, b) => a + b, 0) / windSpeed.length;
-      const avgSolarRadiation = solarRadiation.reduce((a, b) => a + b, 0) / solarRadiation.length;
+      // Filter out invalid temperature values (some APIs may return -999 or similar)
+      const validTemps = temps.filter(t => t > -50 && t < 60);
+      const validMaxTemps = maxTemps.filter(t => t > -50 && t < 60);
+      const validMinTemps = minTemps.filter(t => t > -50 && t < 60);
+
+      const avgTemp = validTemps.length > 0 ? validTemps.reduce((a, b) => a + b, 0) / validTemps.length : 25;
+      const maxTemp = validMaxTemps.length > 0 ? Math.max(...validMaxTemps) : 35;
+      const minTemp = validMinTemps.length > 0 ? Math.min(...validMinTemps) : 15;
+      
+      // Filter rainfall values: must be >= 0 and <= 500mm per day (extreme rain threshold)
+      const validRainfall = rainfall.filter(r => r >= 0 && r <= 500);
+      const totalRainfall = validRainfall.length > 0 ? validRainfall.reduce((a, b) => a + b, 0) : 0;
+      
+      // Filter humidity values: must be 0-100%
+      const validHumidity = humidity.filter(h => h >= 0 && h <= 100);
+      const avgHumidity = validHumidity.length > 0 ? validHumidity.reduce((a, b) => a + b, 0) / validHumidity.length : 60;
+      
+      // Filter wind speed: must be >= 0 and <= 50 m/s (reasonable threshold)
+      const validWindSpeed = windSpeed.filter(w => w >= 0 && w <= 50);
+      const avgWindSpeed = validWindSpeed.length > 0 ? validWindSpeed.reduce((a, b) => a + b, 0) / validWindSpeed.length : 3;
+      
+      // Filter solar radiation: must be >= 0 and <= 45 MJ/m²/day
+      const validSolarRadiation = solarRadiation.filter(s => s >= 0 && s <= 45);
+      const avgSolarRadiation = validSolarRadiation.length > 0 ? validSolarRadiation.reduce((a, b) => a + b, 0) / validSolarRadiation.length : 20;
 
       // Calculate Growing Degree Days (GDD) - important for crop development
       // Base temperature = 10°C for most crops
-      const gdd = temps.reduce((sum, temp) => sum + Math.max(0, temp - 10), 0);
+      // Only use validated temperature values for accurate GDD
+      const gdd = validTemps.reduce((sum, temp) => sum + Math.max(0, temp - 10), 0);
 
-      // Crop health score calculation (0-100)
+      // Crop health score calculation (0-100) based on agro-meteorological indices
       let healthScore = 50;
 
-      // Temperature scoring
-      if (avgTemp > 15 && avgTemp < 32) healthScore += 20;
-      else if (avgTemp > 10 && avgTemp < 38) healthScore += 10;
-      else healthScore -= 10;
+      // Temperature scoring (weights: 25%)
+      // Optimal range 18-28°C for most Pakistani crops (wheat, rice, corn)
+      if (avgTemp >= 18 && avgTemp <= 28) healthScore += 25;
+      else if (avgTemp >= 15 && avgTemp <= 32) healthScore += 15;
+      else if (avgTemp >= 10 && avgTemp <= 38) healthScore += 5;
+      else if (avgTemp < 5 || avgTemp > 40) healthScore -= 20;
 
-      // Rainfall scoring
-      if (totalRainfall > 30 && totalRainfall < 150) healthScore += 20;
-      else if (totalRainfall > 15 && totalRainfall < 200) healthScore += 10;
-      else if (totalRainfall < 10) healthScore -= 15;
+      // GDD (Growing Degree Days) scoring (weights: 20%)
+      // For most crops in Pakistan: 1800-2200 GDD needed for full season
+      // For 30-day period: expect ~100-150 GDD depending on season
+      if (gdd >= 80 && gdd <= 150) healthScore += 20;
+      else if (gdd >= 50 && gdd <= 180) healthScore += 10;
+      else if (gdd < 40 || gdd > 200) healthScore -= 10;
 
-      // Humidity scoring
-      if (avgHumidity > 40 && avgHumidity < 70) healthScore += 10;
-      else if (avgHumidity < 30 || avgHumidity > 85) healthScore -= 10;
+      // Rainfall scoring (weights: 25%)
+      // Optimal monthly: 40-120mm for most crops (daily avg for period)
+      if (totalRainfall >= 40 && totalRainfall <= 120) healthScore += 25;
+      else if (totalRainfall >= 25 && totalRainfall <= 150) healthScore += 15;
+      else if (totalRainfall >= 10 && totalRainfall <= 200) healthScore += 5;
+      else if (totalRainfall < 10) healthScore -= 20; // Dry stress
+      else if (totalRainfall > 200) healthScore -= 15; // Waterlogging stress
 
-      // Solar radiation scoring (optimal for photosynthesis)
-      if (avgSolarRadiation > 15 && avgSolarRadiation < 25) healthScore += 10;
+      // Humidity scoring (weights: 15%)
+      // Optimal: 50-70% (crop transpiration balance)
+      if (avgHumidity >= 50 && avgHumidity <= 70) healthScore += 15;
+      else if (avgHumidity >= 40 && avgHumidity <= 80) healthScore += 8;
+      else if (avgHumidity < 30) healthScore -= 15; // Excessive transpiration stress
+      else if (avgHumidity > 85) healthScore -= 10; // Disease/pest risk
+
+      // Solar radiation scoring (weights: 15% - optimal for photosynthesis)
+      // Optimal: 18-24 MJ/m²/day for crop growth
+      if (avgSolarRadiation >= 18 && avgSolarRadiation <= 24) healthScore += 15;
+      else if (avgSolarRadiation >= 15 && avgSolarRadiation <= 26) healthScore += 8;
 
       const finalScore = Math.min(100, Math.max(0, healthScore));
 
@@ -340,13 +414,33 @@ export const cropHealthTool = tool(
       else if (finalScore > 60) condition = "Good";
       else if (finalScore > 45) condition = "Fair";
 
+      // Comprehensive risk assessment based on crop science
       const risks = [];
-      if (totalRainfall < 20) risks.push("Drought stress - irrigation critical");
-      if (maxTemp > 40) risks.push("Heat stress - crop damage likely");
-      if (minTemp < 5) risks.push("Cold stress - frost risk");
-      if (avgHumidity > 80 && avgTemp > 25) risks.push("High disease/pest risk");
-      if (totalRainfall > 200) risks.push("Excess water - flooding risk");
-      if (avgWindSpeed > 10) risks.push("Wind damage risk");
+      
+      // Drought stress (insufficient water)
+      if (totalRainfall < 15) risks.push("Critical drought - irrigation urgent");
+      else if (totalRainfall < 25) risks.push("Moderate drought stress - monitor soil moisture");
+      
+      // Heat stress (temperature too high)
+      if (maxTemp > 40) risks.push("Critical heat stress - crop damage likely (>40°C)");
+      else if (maxTemp > 38) risks.push("Severe heat stress - reduce transplanting activity");
+      else if (maxTemp > 35) risks.push("Moderate heat stress - increase irrigation frequency");
+      
+      // Cold stress (frost or chilling)
+      if (minTemp < 0) risks.push("Frost risk - frost protection measures needed");
+      else if (minTemp < 5 && avgTemp < 15) risks.push("Cold stress - crop development slowed");
+      
+      // Disease and pest pressure (high humidity + warm temperature)
+      if (avgHumidity > 85 && avgTemp > 22 && avgTemp < 32) risks.push("Critical fungal disease risk - apply preventive fungicides");
+      else if (avgHumidity > 75 && avgTemp > 25) risks.push("High pest/disease risk - increase monitoring");
+      
+      // Waterlogging stress
+      if (totalRainfall > 200) risks.push("Waterlogging risk - flooding possible, ensure drainage");
+      else if (totalRainfall > 150) risks.push("Excess water stress - monitor for waterlogging");
+      
+      // Wind damage
+      if (avgWindSpeed > 12) risks.push("High wind risk - structural crop damage possible");
+      else if (avgWindSpeed > 10) risks.push("Moderate wind risk - monitor young plants");
 
       return JSON.stringify({
         region: coords.name,

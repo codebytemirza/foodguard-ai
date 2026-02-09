@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
 
                     let toolCallsInProgress = new Set<string>();
                     let toolDataCache: Record<string, any> = {};
+                    let regionalToolData: Record<string, Record<string, any>> = {}; // region -> {tool -> data}
 
                     // Tool name mapping for professional display
                     const toolDisplayNames: Record<string, string> = {
@@ -102,6 +103,14 @@ export async function POST(req: NextRequest) {
                                         ? JSON.parse(toolContent) 
                                         : toolContent;
                                     
+                                    // Organize by region
+                                    const region = parsedData.region || parsedData.district || "Unknown";
+                                    if (!regionalToolData[region]) {
+                                        regionalToolData[region] = {};
+                                    }
+                                    regionalToolData[region][toolName] = parsedData;
+                                    
+                                    // Also keep in main cache for backward compatibility
                                     toolDataCache[toolName] = parsedData;
 
                                     // Send tool data to frontend for static panels
@@ -110,7 +119,8 @@ export async function POST(req: NextRequest) {
                                             `data: ${JSON.stringify({
                                                 type: "tool_data",
                                                 toolName: toolName,
-                                                data: parsedData
+                                                data: parsedData,
+                                                region: region
                                             })}\n\n`
                                         )
                                     );
@@ -158,7 +168,8 @@ export async function POST(req: NextRequest) {
                                     `data: ${JSON.stringify({
                                         type: "complete",
                                         report: chunk.structuredResponse,
-                                        toolData: toolDataCache
+                                        toolData: toolDataCache,
+                                        regionalToolData: regionalToolData
                                     })}\n\n`
                                 )
                             );
