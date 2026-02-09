@@ -20,6 +20,7 @@ interface AnalysisProgress {
     report?: any;
     data?: any;
     toolData?: Record<string, any>;
+    regionalToolData?: Record<string, Record<string, any>>;
     error?: string;
 }
 
